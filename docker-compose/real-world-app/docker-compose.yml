@@ -1,0 +1,55 @@
+version: '3.8'
+services:
+  python-app:
+    build:
+      context: .
+    container_name: python-app
+    ports:
+      - "9002:6000"
+    environment:
+      - MYSQL_HOST=mysql # here also the but the db_host name he will this env variable on his machine(container) to connect to mysql service because they are on same network and they can see each other with their service name as hostname
+      - MYSQL_DATABASE=mydb
+      - MYSQL_USER=youssef
+      - MYSQL_PASSWORD=123
+      - REDIS_HOST=redis # this name of the service will resolve to ip of the container and the app will have enviroment variable  redis_host=ip_of_redis_container and if the ip change will resolve to next ip when do dockercompose up 
+      - REDIS_PORT=6379 # when the container that have pyton app find redishost is redis the dockr compose have somethin like dns will resolve the ip of the continer not its gateway or localhost so will not hit :9001 will hit ip:6379 
+      #so here you must write the port of the service inside the container not the port that you map to outside the container
+    depends_on:
+      - redis
+      - mysql
+    networks:
+      - app_network
+
+  redis:
+    image: redis:6.2-alpine
+    container_name: redis
+    # ports:
+      # - "9001:6379" # not important to map redis or mysql to host because compose do dns so they can reach each other by thier internal ip which represents by service name
+      #so you need to map only the python app to host to access it on your machine
+    volumes:
+      - redis_data:/data
+    networks: # each service in compose file if you don't added to network will add to default network
+      - app_network
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=mydb
+      - MYSQL_USER=youssef
+      - MYSQL_PASSWORD=123
+    # ports:
+      # - "9000:3306"
+    command: --default-authentication-plugin=mysql_native_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - app_network
+    
+
+
+volumes:
+  redis_data:
+  mysql_data:
+networks:
+  app_network:

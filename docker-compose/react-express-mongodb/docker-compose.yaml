@@ -1,0 +1,43 @@
+version: '3.8'
+services:
+  frontend:
+    build:
+     context: frontend
+    #  target: production
+    container_name: react
+    ports:
+      - 3000:80
+    networks:
+      - react-express
+    depends_on:
+      - backend
+  backend:
+    build:
+      context: backend
+      # target: production
+    container_name: express
+    # ports:
+      # - 4000:3000 # this just for testing in production the backend can't reach him
+    networks:
+      - react-express
+      - express-mongodb
+    depends_on:
+      - mongo 
+  mongo: # must be mongo cause he depends on that name on db 
+    image: mongo:4.2.0
+    networks:
+      - express-mongodb
+    volumes:
+      - mongo-data:/data/db
+    expose:
+      - 27017 # because not have docker file write its port description with EXPOSE
+
+#in config/config.json wirte     "MONGODB_URI": "mongodb://mongo:27017/TodoAppTest" 
+#here he write the name of db physically in the url so we need to change the name of service in docker file to mongo not mongodb or use instead of physicall use env vairable 
+
+
+networks:
+  react-express:
+  express-mongodb:
+volumes:
+  mongo-data:

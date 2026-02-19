@@ -1,0 +1,67 @@
+# name: my-first-workflow
+# on: push    #OR   [push, workflow_dispatch]
+# jobs:
+#   test:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: say hello
+#         run: echo "Hello"
+#       - name: get code
+#         uses: actions/checkout@v3
+#       - name: install nodejs
+#         uses: actions/setup-node@v3
+#         with: 
+#           node-version: 18  
+#       - name: install dependencies
+#         run: npm ci
+#       - name: run test
+#         run: npm test    
+
+#   deploy:                                  # will work at the same time with test
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: say hello
+#         run: echo "Hello"
+#       - name: get code
+#         uses: actions/checkout@v3
+#       - name: install nodejs
+#         uses: actions/setup-node@v3
+#         with: 
+#           node-version: 18  
+#       - name: install dependencies
+#         run: npm ci
+#       - name: build app
+#         run: npm run build        
+#       - name: echo
+#         run: "echo Deploying ..."   
+
+#   apply:
+#     needs: [ deploy, test ]             # will work after the deploy finishes   
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: say hello
+#         run: echo "Hello"      
+# # -------------------------------------------------------------------------------
+
+name: my-first-workflow
+on: 
+  pull_request:
+    types:
+      - opened
+  workflow_dispatch:    
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: say hello
+        run: echo "Hello"
+      - name: get code
+        uses: actions/checkout@v3
+      - name: install nodejs
+        uses: actions/setup-node@v3
+        with: 
+          node-version: 18  
+      - name: install dependencies
+        run: npm ci
+      - name: run test
+        run: npm test      

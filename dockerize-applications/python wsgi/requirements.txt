@@ -1,0 +1,4 @@
+flask==3.0.0
+gunicorn
+# if you wnat to use gunicorn with uvicorn worker you need to install both of them and add them to requirements.txt
+# its flask app no need to uvicorn or fast api

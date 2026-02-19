@@ -1,0 +1,25 @@
+{
+  "version": "2.0.0",
+  "args": [
+    "--no-color"
+  ],
+  "tasks": [
+    {
+      "label": "build",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "type": "npm",
+      "script": "build",
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": [
+        "$tsc-watch"
+      ]
+    }
+  ]
+}

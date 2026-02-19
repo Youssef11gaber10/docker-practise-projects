@@ -1,0 +1,30 @@
+# name: output
+# on: 
+#     push
+# jobs:
+#     build:
+#         runs-on: ubuntu-latest
+#         outputs:
+#             script-file: 
+#                 "${{ steps.code.outputs.output-1 }}"
+#         steps:
+#             - name: get code
+#               uses: actions/checkout@v3
+#             - name: get ls
+#               run: ls
+#             - name: run npm
+#               run: npm ci
+#             - name: build app 
+#               run: npm run build    
+#             - name: output
+#               id: code
+#               run: |
+#                 find dist/assets/*.js -type f -execdir echo 'output-1={}' >> $GITHUB_OUTPUT ';'
+#                 find dist/assets/*.js -type f -execdir echo '::set-output name=output-2::{}' ';'
+             
+#     deploy:
+#         runs-on: ubuntu-latest
+#         needs: build
+#         steps:
+#             - name: output-1
+#               run: echo "${{ needs.build.outputs.script-file }}"

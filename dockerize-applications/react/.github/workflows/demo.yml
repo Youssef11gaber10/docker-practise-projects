@@ -1,0 +1,39 @@
+# name: Deploy website
+# on:
+#   push:
+#     branches:
+#       - main
+# jobs:
+#   build:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Get code
+#         uses: actions/checkout@v3
+#       - name: Install dependencies
+#         run: npm ci
+#       - name: Build website
+#         run: npm run build
+#       - name: Upload build artifact
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: build-artifact
+#           path: |
+#             dist
+#             package.json  
+#   deploy:
+#     needs: build
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Deploy
+#         run: echo "Deploying..."
+#       - name: download build artifact
+#         uses: actions/download-artifact@v4
+#         with:
+#           name: build-artifact
+#           path: |
+#             dist
+#             package.json    
+#       - name: output
+#         run: | 
+#           touch f1.txt
+#           ls

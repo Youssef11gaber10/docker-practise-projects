@@ -1,0 +1,36 @@
+FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build
+
+WORKDIR /app
+#copy the sln and csproj files and restore as distinct layers
+COPY Talabat.Solution.sln .
+#copy the csproj and restore as distinct layers
+COPY Talabat.APIs/*.csproj Talabat.APIs/
+COPY Talabat.Core/*.csproj Talabat.Core/
+COPY Talabat.Repository/*.csproj Talabat.Repository/
+COPY Talabat.Service/*.csproj Talabat.Service/
+
+# isntall dependencies
+RUN dotnet restore
+
+#copy everything else and build
+COPY . .
+RUN dotnet publish Talabat.APIs/Talabat.APIs.csproj \
+    -c Release \
+    -o /app/publish \
+    --no-restore
+# RUN dotnet publish Talabat.APIs/Talabat.APIs.csproj -c Release -o /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:6.0 AS runtime
+WORKDIR /app
+COPY --from=build /app/publish .
+
+EXPOSE 5000
+
+ENV ASPNETCORE_URLS=http://+:5000  
+# this like 0.0.0.0:5000 to listen on all interfaces and not just localhost
+# this is requried or write it in application code 
+
+# ENV ASPNETCORE_ENVIRONMENT=Production 
+# not necessary needs to not run some developement code inside the app 
+
+ENTRYPOINT ["dotnet", "Talabat.APIs.dll"]

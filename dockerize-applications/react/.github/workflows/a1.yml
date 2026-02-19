@@ -1,0 +1,15 @@
+name: print ecco hello 
+on:
+  push:
+    branches:
+    - main
+jobs:
+  my_job:
+    name: deploy to staging
+    runs-on: self-hosted
+    steps: 
+    - name: eco
+      run: | 
+        ls
+        
+      
