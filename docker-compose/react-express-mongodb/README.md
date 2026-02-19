@@ -1,134 +1,328 @@
-## Compose sample application
-### React application with a NodeJS backend and a MongoDB database
+# 🐳 Docker Compose — React + Express + MongoDB
 
-Project structure:
+A full-stack application with a **React** frontend, **Express.js** backend, and **MongoDB** database, orchestrated with Docker Compose. Nginx acts as a **reverse proxy** — serving the React app and forwarding API requests to the backend, with **two isolated networks** for security.
+
+---
+
+## 📁 Project Structure
+
 ```
-.
-├── backend
-│   ├── Dockerfile
-│   ...
-├── compose.yaml
-├── frontend
-│   ├── ...
+react-express-mongodb/
+├── frontend/
+│   ├── src/                  # React source code
+│   ├── package.json
+│   ├── nginx.conf            # Nginx reverse proxy config
 │   └── Dockerfile
-└── README.md
+├── backend/
+│   ├── server.js             # Express entry point
+│   ├── config/
+│   │   └── config.json       # MongoDB connection config
+│   ├── package.json
+│   └── Dockerfile
+├── docker-compose.yml
+├── imagealpine               # Trivy scan output — alpine-based image report
+└── output.png                # Trivy scan output screenshot
 ```
 
-[_compose.yaml_](compose.yaml)
-```
-services:
-  frontend:
-    build:
-      context: frontend
-    ...
-    ports:
-      - 3000:3000
-    ...
-  server:
-    container_name: server
-    restart: always
-    build:
-      context: server
-      args:
-        NODE_PORT: 3000
-    ports:
-      - 3000:3000
-    ...
-    depends_on:
-      - mongo
-  mongo:
-    container_name: mongo
-    restart: always
-    ...
-```
-The compose file defines an application with three services `frontend`, `backend` and `db`.
-When deploying the application, docker compose maps port 3000 of the frontend service container to port 3000 of the host as specified in the file.
-Make sure port 3000 on the host is not already being in use.
+---
 
-## Deploy with docker compose
+## 🏗️ Architecture
 
 ```
-$ docker compose up -d
-Creating network "react-express-mongodb_default" with the default driver
-Building frontend
-Step 1/9 : FROM node:13.13.0-stretch-slim
- ---> aa6432763c11
-...
-Successfully tagged react-express-mongodb_app:latest
-WARNING: Image for service app was built because it did not already exist. To rebuild this image you must use `docker-compose build` or `docker-compose up --build`.
-Creating frontend        ... done
-Creating mongo           ... done
-Creating app             ... done
+                         ┌──────────────────────────────────────────────┐
+                         │              react-express network            │
+                         │                                               │
+Browser ──▶ Host:3000 ──▶│  frontend (Nginx:80)                         │
+                         │       │                                       │
+                         │  GET /        → serves React static files    │
+                         │  GET /api/*   → proxy_pass ──▶ backend:3000  │
+                         │                       │                       │
+                         └───────────────────────│───────────────────────┘
+                                                 │
+                         ┌───────────────────────│───────────────────────┐
+                         │          express-mongodb network              │
+                         │                       │                       │
+                         │               backend (Express:3000)          │
+                         │                       │                       │
+                         │               mongo:27017                     │
+                         │               (mongo-data volume)             │
+                         └──────────────────────────────────────────────┘
 ```
 
-## Expected result
+### Two Networks — Why?
+| Network | Members | Purpose |
+|---------|---------|---------|
+| `react-express` | frontend, backend | Frontend can reach backend via Nginx proxy |
+| `express-mongodb` | backend, mongo | Backend can reach MongoDB |
 
-Listing containers must show containers running and the port mapping as below:
+The frontend **cannot directly reach MongoDB** — it has no access to the `express-mongodb` network. This mirrors real production security where the database is completely isolated from the public-facing layer.
+
+---
+
+## 🐋 Docker Compose Breakdown
+
+### `frontend` (React + Nginx)
+- Built from `frontend/Dockerfile`
+- Exposed on host port `3000`, internal Nginx port `80`
+- Serves the React static files and proxies `/api/` requests to the backend
+- Depends on `backend`
+- Connected to `react-express` network only
+
+### `backend` (Express.js)
+- Built from `backend/Dockerfile`
+- **Not exposed to host** — only reachable inside `react-express` network
+- All traffic reaches it through Nginx, not directly
+- Connected to both `react-express` and `express-mongodb` networks (the bridge between frontend and DB layers)
+- Depends on `mongo`
+
+### `mongo` (MongoDB)
+- Official `mongo:4.2.0` image
+- **Not exposed to host** — uses `expose: 27017` (container-internal only, not host-mapped)
+- Connected to `express-mongodb` network only
+- Data persisted in `mongo-data` named volume
+
+---
+
+## 🔁 Nginx as Reverse Proxy — `nginx.conf` Explained
+
+```nginx
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html index.htm;
+
+    # React SPA fallback — handles client-side routing
+    location / {
+        try_files $uri /index.html;
+    }
+
+    # Proxy API requests to the Express backend
+    location /api/ {
+        proxy_pass http://backend:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
 ```
-$ docker ps
-CONTAINER ID        IMAGE                               COMMAND                  CREATED             STATUS                  PORTS                      NAMES
-06e606d69a0e        react-express-mongodb_server        "docker-entrypoint.s…"   23 minutes ago      Up 23 minutes           0.0.0.0:3000->3000/tcp     server
-ff56585e1db4        react-express-mongodb_frontend      "docker-entrypoint.s…"   23 minutes ago      Up 23 minutes           0.0.0.0:3000->3000/tcp     frontend
-a1f321f06490        mongo:4.2.0                         "docker-entrypoint.s…"   23 minutes ago      Up 23 minutes           0.0.0.0:27017->27017/tcp   mongo
+
+### How traffic flows:
+- `GET /` → Nginx serves `index.html` → React app loads in the browser
+- `GET /some-page` → React Router handles it client-side (SPA fallback)
+- `GET /api/todos` → Nginx proxies to `http://backend:3000/api/todos` → Express handles it
+
+### Why `try_files $uri /index.html`?
+React uses client-side routing. If you refresh the page on `/about`, Nginx looks for a file called `about` — it doesn't exist. Without this fallback, Nginx returns a 404. With `try_files`, it falls back to `index.html` and lets React Router handle the route.
+
+### Why `proxy_pass http://backend:3000`?
+`backend` is the Docker Compose service name — Docker's internal DNS resolves it to the backend container's IP automatically.
+
+---
+
+## 📄 Dockerfiles Explained
+
+### Frontend (React + Vite → Nginx)
+
+```dockerfile
+# Stage 1: Build React app
+FROM node:18-alpine AS builder
+WORKDIR /app
+COPY ./package*.json .
+RUN npm install
+COPY . .
+RUN npm run build          # outputs to /app/build
+
+# Stage 2: Serve with Nginx + custom config
+FROM nginx:stable-alpine3.23-slim
+COPY --from=builder /app/build /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf   # override default Nginx config
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
 ```
 
-After the application starts, navigate to `http://localhost:3000` in your web browser.
+### Backend (Express.js)
 
-![page](./output.png)
+```dockerfile
+# Stage 1: Install only production dependencies
+FROM node:18-alpine AS deps
+WORKDIR /app
+COPY ./package*.json .
+RUN npm ci --only=production   # skips devDependencies — smaller, more secure image
 
-Stop and remove the containers
+# Stage 2: Run with slim image
+FROM node:18-slim
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+EXPOSE 3000
+CMD ["node", "server.js"]
 ```
-$ docker compose down
-Stopping server   ... done
-Stopping frontend ... done
-Stopping mongo    ... done
-Removing server   ... done
-Removing frontend ... done
-Removing mongo    ... done
+
+> `npm ci --only=production` installs only production dependencies, skipping dev tools like nodemon, jest, etc. This keeps the final image smaller and more secure.
+
+---
+
+## 🍃 MongoDB Service Name Matters
+
+```yaml
+mongo:         # ← service name MUST be "mongo"
+  image: mongo:4.2.0
 ```
 
-##### Explanation of `docker-compose`
+In `config/config.json`:
+```json
+"MONGODB_URI": "mongodb://mongo:27017/TodoAppTest"
+```
 
-__Version__
+The connection string uses `mongo` as the hostname — this must match the **exact service name** in `docker-compose.yml`. Docker's DNS resolves `mongo` to the container's IP. If you rename the service, the connection string must be updated too.
 
-The first line defines the version of a file. It sounds confusing :confused:. What is meant by version of file ?? 
+---
 
-:pill: The Compose file is a YAML file defining services, networks, and volumes for a Docker application. So it is only a version of describing compose.yaml file. There are several versions of the Compose file format – 1, 2, 2.x, and 3.x.
+## 🔌 `expose` vs `ports` — What's the Difference?
 
-__Services__
+```yaml
+mongo:
+  expose:
+    - 27017    # container-internal only, NOT accessible from host
+```
 
-Our main goal to create a containers, it starts from here. As you can see there are three services(Docker images): 
-- First is __frontend__ 
-- Second is __server__ which is __backend - Express(NodeJS)__. I used a name server here, it's totally on you to name it __backend__.
-- Third is __mongo__ which is db __MongoDB__.
+| | `ports` | `expose` |
+|--|---------|---------|
+| Accessible from host | ✅ Yes | ❌ No |
+| Accessible from other containers | ✅ Yes | ✅ Yes |
+| Use case | Services you need to access from your machine | Internal services (DB, cache) |
 
-##### Service app (backend - NodeJS)
+MongoDB uses `expose` because only the backend needs to reach it — there's no reason to expose it to your machine in production.
 
-We make image of app from our `Dockerfile`, explanation below.
+---
 
-__Explanation of service server__
+## 💾 Volumes
 
-- Defining a **nodejs** service as __server__.
-- We named our **node server** container service as **server**. Assigning a name to the containers makes it easier to read when there are lot of containers on a machine, it can also avoid randomly generated container names. (Although in this case, __container_name__ is also __server__, this is merely personal preference, the name of the service and container do not have to be the same.) 
-- Docker container starts automatically if its fails.
-- Building the __server__ image using the Dockerfile from the current directory and passing an argument to the
-backend(server) `DockerFile`.
-- Mapping the host port to the container port.
+| Volume | Mounted At | Purpose |
+|--------|-----------|---------|
+| `mongo-data` | `/data/db` | Persists MongoDB data across container restarts |
 
-##### Service mongo
+---
 
-We add another service called **mongo** but this time instead of building it from `DockerFile` we write all the instruction here directly. We simply pull down the standard __mongo image__ from the [DockerHub](https://hub.docker.com/) registry as we have done it for Node image.
+## 🛠️ Build & Run
 
-__Explanation of service mongo__
+### Start all services
 
-- Defining a **mongodb** service as __mongo__.
-- Pulling the mongo 4.2.0 image image again from [DockerHub](https://hub.docker.com/).
-- Mount our current db directory to container. 
-- For persistent storage, we mount the host directory ( just like I did it in **Node** image inside `DockerFile` to reflect the changes) `/data` ( you need to create a directory in root of your project in order to save changes to locally as well) to the container directory `/data/db`, which was identified as a potential mount point in the `mongo Dockerfile` we saw earlier.
-- Mounting volumes gives us persistent storage so when starting a new container, Docker Compose will use the volume of any previous containers and copy it to the new container, ensuring that no data is lost.
-- Finally, we link/depends_on the app container to the mongo container so that the mongo service is reachable from the app service.
-- In last mapping the host port to the container port.
+```bash
+docker-compose up --build
+```
 
-:key: `If you wish to check your DB changes on your local machine as well. You should have installed MongoDB locally, otherwise you can't access your mongodb service of container from host machine.` 
+### Run in detached mode
 
-:white_check_mark: You should check your __mongo__ version is same as used in image. You can see the version of __mongo__ image in `docker-compose `file, I used __image: mongo:4.2.0__. If your mongo db version on your machine is not same then furst you have to updated your  local __mongo__ version in order to works correctly.
+```bash
+docker-compose up --build -d
+```
+
+### Access the app
+
+```
+http://localhost:3000
+```
+
+API requests from the frontend go to `/api/*` and are proxied to Express automatically.
+
+### Stop containers
+
+```bash
+docker-compose down
+```
+
+### Stop and remove volumes (wipes MongoDB data)
+
+```bash
+docker-compose down -v
+```
+
+---
+
+## 🔒 Security Scanning with Trivy
+
+All images in this project were scanned with **[Trivy](https://github.com/aquasecurity/trivy)** — an open-source vulnerability scanner for Docker images. Scan results are included in the repo for reference.
+
+| File | Description |
+|------|-------------|
+| `imagealpine` | Trivy scan output for the alpine-based image (text report) |
+| `output.png` | Screenshot of Trivy scan results |
+
+### What is Trivy?
+Trivy scans Docker images for:
+- **OS vulnerabilities** — known CVEs in the base image packages
+- **Library vulnerabilities** — vulnerable versions of npm, pip, etc. packages
+- **Severity levels** — CRITICAL, HIGH, MEDIUM, LOW, UNKNOWN
+
+### How to scan the images yourself
+
+#### Install Trivy
+```bash
+# macOS
+brew install trivy
+
+# Linux
+sudo apt-get install trivy
+
+# Or via Docker (no install needed)
+docker run aquasec/trivy image <image-name>
+```
+
+#### Scan the frontend image
+```bash
+# Build first
+docker build -t react-frontend ./frontend
+
+# Scan
+trivy image react-frontend
+```
+
+#### Scan the backend image
+```bash
+# Build first
+docker build -t express-backend ./backend
+
+# Scan
+trivy image express-backend
+```
+
+#### Scan a pulled image (e.g. MongoDB)
+```bash
+trivy image mongo:4.2.0
+```
+
+#### Scan and filter by severity
+```bash
+# Show only CRITICAL and HIGH vulnerabilities
+trivy image --severity CRITICAL,HIGH react-frontend
+```
+
+#### Save scan output to a file
+```bash
+trivy image react-frontend > imagealpine
+```
+
+### Why Alpine?
+Alpine-based images (`node:18-alpine`, `nginx:stable-alpine`) generally have **fewer vulnerabilities** than Debian/Ubuntu-based images because they ship with a minimal set of packages. This is one of the key security benefits of using Alpine as a base image.
+
+> 💡 **Tip:** Always scan your images before pushing to a registry or deploying to production. Consider adding Trivy to your CI/CD pipeline to catch vulnerabilities automatically.
+
+---
+
+## 💡 Key Concepts Practiced
+
+- ✅ Full-stack Docker Compose orchestration (React + Express + MongoDB)
+- ✅ Nginx as a reverse proxy — serving static files + proxying API requests
+- ✅ React SPA fallback with `try_files $uri /index.html`
+- ✅ Two isolated networks for layered security (frontend ↔ backend ↔ DB)
+- ✅ `expose` vs `ports` — internal vs host-accessible ports
+- ✅ Docker internal DNS — service names as hostnames
+- ✅ `npm ci --only=production` for lean backend images
+- ✅ Named volumes for MongoDB data persistence
+- ✅ Backend not exposed to host — all traffic goes through Nginx
+- ✅ Multistage builds for both frontend and backend
+- ✅ Image security scanning with Trivy (CVE detection)
+- ✅ Alpine-based images for reduced attack surface

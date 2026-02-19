@@ -95,7 +95,7 @@ CMD ["node", "server.js"]
 
 ---
 
-## 💡 Key Concepts Practiced
+## 💡 Key Concepts 
 
 - ✅ Multistage Docker builds
 - ✅ Reducing final image size by separating build and runtime stages

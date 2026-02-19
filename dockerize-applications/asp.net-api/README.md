@@ -144,7 +144,7 @@ http://localhost:5000/swagger
 
 ---
 
-## 💡 Key Concepts Practiced
+## 💡 Key Concepts 
 
 - ✅ Multistage Docker builds for ASP.NET Core
 - ✅ Layer caching optimization (copy `.csproj` files before source code)
